@@ -2,6 +2,6 @@
     "code-runner.runInTerminal": true,
     "code-runner.saveFileBeforeRun": true,
     "code-runner.executorMap": {
-        "c": "gcc $fileName -o $fileNameWithoutExt.exe ; if ($?) { .\\$fileNameWithoutExt.exe } ; if (Test-Path $fileNameWithoutExt.exe) { Remove-Item $fileNameWithoutExt.exe }"
+        "c": "taskkill /F /IM $fileNameWithoutExt.exe /T 2>$null ; gcc $fileName -o $fileNameWithoutExt.exe ; if ($?) { .\\$fileNameWithoutExt.exe } ; if (Test-Path $fileNameWithoutExt.exe) { Remove-Item $fileNameWithoutExt.exe }"
     }
 }
