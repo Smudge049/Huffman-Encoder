@@ -1,0 +1,7 @@
+{
+    "code-runner.runInTerminal": true,
+    "code-runner.saveFileBeforeRun": true,
+    "code-runner.executorMap": {
+        "c": "gcc $fileName -o $fileNameWithoutExt.exe ; if ($?) { .\\$fileNameWithoutExt.exe } ; if (Test-Path $fileNameWithoutExt.exe) { Remove-Item $fileNameWithoutExt.exe }"
+    }
+}

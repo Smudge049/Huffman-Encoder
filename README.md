@@ -66,3 +66,49 @@ The serialized header follows this structure:
 
 ## 🤝 Contributing
 Feel free to fork this project and submit pull requests. Future improvements could include multi-byte coding or canonical Huffman codes for smaller headers.
+
+
+
+To run the code, you have three options depending on how you want to use it:
+
+1. Interactive Mode (Menu Driven)
+Simply run the executable by itself. This will open the menu where you can choose to Compress or Decompress.
+
+powershell
+.\dhunju.exe
+Then follow the prompts:
+
+Press C for Compression or D for Decompression.
+Paste your file path (you can now paste paths with quotes directly!).
+2. The "Drag and Drop" Way (Automatic)
+This is the easiest way:
+
+To Compress: Drag any file (like 
+hello.txt
+) and drop it directly onto the 
+dhunju.exe
+ icon in your folder. It will automatically create hello.txt.huf.
+To Decompress: Drag a 
+.huf
+ file onto 
+dhunju.exe
+. It will automatically recreate the original file.
+3. Command Line (Direct)
+You can also run it directly from the terminal by passing the file path as an argument:
+
+powershell
+.\dhunju.exe "hello.txt"
+The program will detect the extension and automatically decide whether to compress or decompress.
+
+How to Compile (If needed)
+If you ever change the code in 
+dhunju.c
+ and need to rebuild it, run this command:
+
+bash
+gcc dhunju.c -o dhunju.exe
+[!TIP] Pro Tip: Right-click a 
+.huf
+ file -> Open With -> Choose another app -> Select 
+dhunju.exe
+ and check "Always use this app". Now you can decompress your files just by double-clicking them!

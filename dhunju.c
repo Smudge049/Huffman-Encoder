@@ -50,6 +50,21 @@ int is_directory(const char *path) {
     return 0;
 }
 
+int fileExists(const char *path) {
+    struct stat s;
+    return (stat(path, &s) == 0);
+}
+
+int confirmAction(const char *message) {
+    char choice;
+    printf("\n[CONFIRM] %s (Y/N): ", message);
+    scanf(" %c", &choice);
+    // Clear buffer
+    int c;
+    while ((c = getchar()) != '\n' && c != EOF);
+    return (choice == 'y' || choice == 'Y');
+}
+
 // --- Min Heap Functions ---
 
 struct Node* createNode(unsigned char data, uint32_t freq) {
@@ -312,6 +327,14 @@ void compressFile(const char* inputPath, const char* outputPath) {
     // Show generated codes
     printHuffmanCodes();
 
+    if (fileExists(outputPath)) {
+        if (!confirmAction("Output file already exists. Overwrite?")) {
+            printf("[CANCELLED] Operation aborted by user.\n");
+            fclose(in);
+            return;
+        }
+    }
+
     FILE* out = fopen(outputPath, "wb");
     if (!out) { perror("Error opening output file"); fclose(in); return; }
 
@@ -346,15 +369,29 @@ void compressFile(const char* inputPath, const char* outputPath) {
     fseek(out, 0, SEEK_END);
     long outSize = ftell(out);
 
-    printf("=== COMPRESSION COMPLETE ===\n");
+    printf("\n=== COMPRESSION COMPLETE ===\n");
     printf("Original Size:   %ld bytes\n", inSize);
     printf("Compressed Size: %ld bytes\n", outSize);
-    printf("Compression Ratio: %.2f%%\n", (double)outSize / inSize * 100);
-    printf("Space Saved: %.2f%%\n", (1.0 - (double)outSize / inSize) * 100);
-    printf("=============================\n\n");
+    printf("Compression Ratio: %.2f%%\n", ((double)outSize / inSize) * 100);
+    printf("Space Saved:      %.2f%%\n", (1.0 - (double)outSize / inSize) * 100);
+    printf("=============================\n");
 
     fclose(in);
     fclose(out);
+
+    // Smart Compression Choice
+    if (outSize > inSize) {
+        printf("\n[WARNING] Compressed version is larger than original due to header overhead.");
+        if (!confirmAction("Keep this inefficient file anyway?")) {
+            if (remove(outputPath) == 0) {
+                printf("[DELETED] Inefficient compressed file removed.\n");
+            } else {
+                perror("[ERROR] Could not remove file");
+            }
+        } else {
+            printf("[KEPT] Efficiency warning acknowledged.\n");
+        }
+    }
     
     // Free Huffman codes
     for (int i = 0; i < MAX_CHAR; i++) 
@@ -391,6 +428,14 @@ void decompressFile(const char* inputPath, const char* outputPath) {
     }
 
     struct Node* root = buildHuffmanTree(uniqueChars, uniqueFreqs, uniqueCount);
+
+    if (fileExists(outputPath)) {
+        if (!confirmAction("Output file already exists. Overwrite?")) {
+            printf("[CANCELLED] Operation aborted by user.\n");
+            fclose(in);
+            return;
+        }
+    }
 
     FILE* out = fopen(outputPath, "wb");
     if (!out) { perror("Error opening output file"); fclose(in); return; }
