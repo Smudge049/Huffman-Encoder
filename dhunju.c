@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <sys/stat.h>
+#include <ctype.h>
 
 #define MAX_TREE_HT 256
 #define MAX_CHAR 256
@@ -19,6 +21,15 @@ struct MinHeap {
     unsigned capacity;
     struct Node** array;
 };
+
+// --- Path Helpers ---
+int is_directory(const char *path) {
+    struct stat s;
+    if (stat(path, &s) == 0) {
+        return (s.st_mode & S_IFDIR);
+    }
+    return 0;
+}
 
 // --- Min Heap Functions ---
 
@@ -405,14 +416,73 @@ void clearInputBuffer() {
     while ((c = getchar()) != '\n' && c != EOF);
 }
 
-int main() {
+int main(int argc, char *argv[]) {
+    // --- Command Line Mode (Auto-detect) ---
+    if (argc >= 2) {
+        char *inputPath = argv[1];
+        
+        if (is_directory(inputPath)) {
+            printf("\n╔════════════════════════════════════════╗\n");
+            printf("║   ERROR: DIRECTORY DETECTED            ║\n");
+            printf("╚════════════════════════════════════════╝\n");
+            printf("Path: %s\n", inputPath);
+            printf("This tool only processes individual files (txt, images, etc.).\n");
+            printf("\nPress Enter to exit...");
+            getchar();
+            return 1;
+        }
+
+        char outputPath[512];
+        char *lastDot = strrchr(inputPath, '.');
+        
+        // Check if it's a Huffman compressed file (.huf)
+        int isHuf = (lastDot && (strcmp(lastDot, ".huf") == 0 || strcmp(lastDot, ".HUF") == 0));
+
+        if (isHuf) {
+            // DECOMPRESS logic
+            // Example: "data.txt.huf" -> "data_decompressed.txt"
+            size_t baseLen = lastDot - inputPath;
+            char base[512];
+            strncpy(base, inputPath, baseLen);
+            base[baseLen] = '\0';
+            
+            char *prevDot = strrchr(base, '.');
+            if (prevDot) {
+                size_t namePartLen = prevDot - base;
+                strncpy(outputPath, base, namePartLen);
+                outputPath[namePartLen] = '\0';
+                strcat(outputPath, "_decompressed");
+                strcat(outputPath, prevDot);
+            } else {
+                strcpy(outputPath, base);
+                strcat(outputPath, "_decompressed.txt");
+            }
+            
+            printf("\n[ACTION] Decompressing: %s\n", inputPath);
+            decompressFile(inputPath, outputPath);
+        } else {
+            // COMPRESS logic
+            // Example: "data.txt" -> "data.txt.huf"
+            sprintf(outputPath, "%s.huf", inputPath);
+            
+            printf("\n[ACTION] Compressing: %s\n", inputPath);
+            compressFile(inputPath, outputPath);
+        }
+        
+        printf("\nProcess completed successfully.\n");
+        printf("Press Enter to close this window...");
+        getchar();
+        return 0;
+    }
+
+    // --- Interactive Mode ---
     char mode;
     char inputPath[512];
     char outputPath[512];
     char continueChoice;
 
     do {
-        // Clear screen (optional, works on most terminals)
+        // Clear screen
         printf("\033[2J\033[H");
         
         printf("╔════════════════════════════════════════╗\n");
@@ -420,7 +490,6 @@ int main() {
         printf("║   Data Structure: Min Heap + Tree      ║\n");
         printf("╚════════════════════════════════════════╝\n\n");
 
-        // Get mode
         printf("Select operation mode:\n");
         printf("  [C] Compress a file\n");
         printf("  [D] Decompress a file\n");
@@ -429,10 +498,7 @@ int main() {
         scanf(" %c", &mode);
         clearInputBuffer();
 
-        // Convert to uppercase for easier comparison
-        if (mode >= 'a' && mode <= 'z') {
-            mode = mode - 'a' + 'A';
-        }
+        if (mode >= 'a' && mode <= 'z') mode = mode - 'a' + 'A';
 
         if (mode == 'Q') {
             printf("\nThank you for using Huffman Compression Tool!\n");
@@ -446,36 +512,20 @@ int main() {
             continue;
         }
 
-        // Get input file path
         printf("\nEnter input file path: ");
         if (fgets(inputPath, sizeof(inputPath), stdin) != NULL) {
-            // Remove trailing newline
             size_t len = strlen(inputPath);
-            if (len > 0 && inputPath[len-1] == '\n') {
-                inputPath[len-1] = '\0';
-            }
+            if (len > 0 && inputPath[len-1] == '\n') inputPath[len-1] = '\0';
         }
 
-        // Get output file path
         printf("Enter output file path: ");
         if (fgets(outputPath, sizeof(outputPath), stdin) != NULL) {
-            // Remove trailing newline
             size_t len = strlen(outputPath);
-            if (len > 0 && outputPath[len-1] == '\n') {
-                outputPath[len-1] = '\0';
-            }
+            if (len > 0 && outputPath[len-1] == '\n') outputPath[len-1] = '\0';
         }
 
-        // Validate paths
-        if (strlen(inputPath) == 0) {
-            printf("\nError: Input file path cannot be empty!\n");
-            printf("Press Enter to continue...");
-            getchar();
-            continue;
-        }
-
-        if (strlen(outputPath) == 0) {
-            printf("\nError: Output file path cannot be empty!\n");
+        if (strlen(inputPath) == 0 || strlen(outputPath) == 0) {
+            printf("\nError: Paths cannot be empty!\n");
             printf("Press Enter to continue...");
             getchar();
             continue;
@@ -483,7 +533,6 @@ int main() {
 
         printf("\n");
 
-        // Perform operation
         if (mode == 'C') {
             printf("Compressing file...\n");
             compressFile(inputPath, outputPath);
@@ -492,14 +541,11 @@ int main() {
             decompressFile(inputPath, outputPath);
         }
 
-        // Ask if user wants to continue
         printf("Do you want to perform another operation? (Y/N): ");
         scanf(" %c", &continueChoice);
         clearInputBuffer();
 
-        if (continueChoice >= 'a' && continueChoice <= 'z') {
-            continueChoice = continueChoice - 'a' + 'A';
-        }
+        if (continueChoice >= 'a' && continueChoice <= 'z') continueChoice = continueChoice - 'a' + 'A';
 
     } while (continueChoice == 'Y');
 
