@@ -22,7 +22,26 @@ struct MinHeap {
     struct Node** array;
 };
 
-// --- Path Helpers ---
+void trimQuotes(char *str) {
+    if (str == NULL) return;
+    size_t len = strlen(str);
+    // Remove trailing newline if it exists (from fgets)
+    if (len > 0 && str[len - 1] == '\n') {
+        str[len - 1] = '\0';
+        len--;
+    }
+    // Remove space at the end if any
+    while (len > 0 && isspace(str[len - 1])) {
+        str[len - 1] = '\0';
+        len--;
+    }
+    // Remove quotes if they exist at both ends
+    if (len >= 2 && str[0] == '"' && str[len - 1] == '"') {
+        memmove(str, str + 1, len - 2);
+        str[len - 2] = '\0';
+    }
+}
+
 int is_directory(const char *path) {
     struct stat s;
     if (stat(path, &s) == 0) {
@@ -418,8 +437,11 @@ void clearInputBuffer() {
 
 int main(int argc, char *argv[]) {
     // --- Command Line Mode (Auto-detect) ---
+    // This allows decompressing by clicking the .huf file if associated with this exe
     if (argc >= 2) {
-        char *inputPath = argv[1];
+        char inputPath[512];
+        strcpy(inputPath, argv[1]);
+        trimQuotes(inputPath);
         
         if (is_directory(inputPath)) {
             printf("\n╔════════════════════════════════════════╗\n");
@@ -482,7 +504,7 @@ int main(int argc, char *argv[]) {
     char continueChoice;
 
     do {
-        // Clear screen
+        // Clear screen (optional, works on most terminals)
         printf("\033[2J\033[H");
         
         printf("╔════════════════════════════════════════╗\n");
@@ -490,6 +512,7 @@ int main(int argc, char *argv[]) {
         printf("║   Data Structure: Min Heap + Tree      ║\n");
         printf("╚════════════════════════════════════════╝\n\n");
 
+        // Get mode
         printf("Select operation mode:\n");
         printf("  [C] Compress a file\n");
         printf("  [D] Decompress a file\n");
@@ -498,7 +521,10 @@ int main(int argc, char *argv[]) {
         scanf(" %c", &mode);
         clearInputBuffer();
 
-        if (mode >= 'a' && mode <= 'z') mode = mode - 'a' + 'A';
+        // Convert to uppercase for easier comparison
+        if (mode >= 'a' && mode <= 'z') {
+            mode = mode - 'a' + 'A';
+        }
 
         if (mode == 'Q') {
             printf("\nThank you for using Huffman Compression Tool!\n");
@@ -512,20 +538,28 @@ int main(int argc, char *argv[]) {
             continue;
         }
 
+        // Get input file path
         printf("\nEnter input file path: ");
         if (fgets(inputPath, sizeof(inputPath), stdin) != NULL) {
-            size_t len = strlen(inputPath);
-            if (len > 0 && inputPath[len-1] == '\n') inputPath[len-1] = '\0';
+            trimQuotes(inputPath);
         }
 
+        // Get output file path
         printf("Enter output file path: ");
         if (fgets(outputPath, sizeof(outputPath), stdin) != NULL) {
-            size_t len = strlen(outputPath);
-            if (len > 0 && outputPath[len-1] == '\n') outputPath[len-1] = '\0';
+            trimQuotes(outputPath);
         }
 
-        if (strlen(inputPath) == 0 || strlen(outputPath) == 0) {
-            printf("\nError: Paths cannot be empty!\n");
+        // Validate paths
+        if (strlen(inputPath) == 0) {
+            printf("\nError: Input file path cannot be empty!\n");
+            printf("Press Enter to continue...");
+            getchar();
+            continue;
+        }
+
+        if (strlen(outputPath) == 0) {
+            printf("\nError: Output file path cannot be empty!\n");
             printf("Press Enter to continue...");
             getchar();
             continue;
@@ -533,6 +567,7 @@ int main(int argc, char *argv[]) {
 
         printf("\n");
 
+        // Perform operation
         if (mode == 'C') {
             printf("Compressing file...\n");
             compressFile(inputPath, outputPath);
@@ -541,11 +576,14 @@ int main(int argc, char *argv[]) {
             decompressFile(inputPath, outputPath);
         }
 
+        // Ask if user wants to continue
         printf("Do you want to perform another operation? (Y/N): ");
         scanf(" %c", &continueChoice);
         clearInputBuffer();
 
-        if (continueChoice >= 'a' && continueChoice <= 'z') continueChoice = continueChoice - 'a' + 'A';
+        if (continueChoice >= 'a' && continueChoice <= 'z') {
+            continueChoice = continueChoice - 'a' + 'A';
+        }
 
     } while (continueChoice == 'Y');
 
