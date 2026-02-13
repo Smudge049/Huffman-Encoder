@@ -2,229 +2,532 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
-#include <sys/stat.h>
 #include <ctype.h>
 
 #define MAX_CHAR 256
 
-// Huffman Tree Node
-typedef struct Node {
+struct Node {
     unsigned char data;
     uint32_t freq;
     struct Node *left, *right;
-} Node;
+};
 
-// Min Heap for priority queue
-typedef struct {
+struct MinHeap {
     unsigned size;
-    Node** array;
-} MinHeap;
+    struct Node** array;
+};
 
-char* codes[MAX_CHAR];
+void trimWhitespace(char *str, size_t *len) {
+    while (*len > 0 && isspace((unsigned char)str[*len - 1])) {
+        str[*len - 1] = '\0';
+        (*len)--;
+    }
+    
+    int start = 0;
+    while (start < *len && isspace((unsigned char)str[start])) {
+        start++;
+    }
+    if (start > 0) {
+        memmove(str, str + start, *len - start + 1);
+        *len -= start;
+    }
+}
 
-// --- Utilities ---
-void trim(char *str) {
-    if (!str) return;
+void trimQuotes(char *str) {
+    if (str == NULL) return;
     size_t len = strlen(str);
-    while (len > 0 && isspace((unsigned char)str[len - 1])) str[--len] = '\0';
-    char *start = str;
-    while (*start && isspace((unsigned char)*start)) start++;
-    if (start != str) memmove(str, start, strlen(start) + 1);
-    len = strlen(str);
-    if (len >= 2 && ((str[0] == '"' && str[len - 1] == '"') || (str[0] == '\'' && str[len - 1] == '\''))) {
-        memmove(str, str + 1, len - 2);
-        str[len - 2] = '\0';
+    
+    if (len > 0 && str[len - 1] == '\n') {
+        str[len - 1] = '\0';
+        len--;
+    }
+
+    trimWhitespace(str, &len);
+
+    if (len > 0 && str[0] == '&') {
+        memmove(str, str + 1, len);
+        len--;
+        trimWhitespace(str, &len);
+    }
+
+    if (len >= 2) {
+        if ((str[0] == '"' && str[len - 1] == '"') || (str[0] == '\'' && str[len - 1] == '\'')) {
+            memmove(str, str + 1, len - 2);
+            str[len - 2] = '\0';
+            len -= 2;
+            trimWhitespace(str, &len);
+        }
     }
 }
 
-int is_dir(const char *path) {
-    struct stat s;
-    return (stat(path, &s) == 0 && (s.st_mode & S_IFDIR));
+int confirmAction(const char *message) {
+    char choice;
+    printf("\n[CONFIRM] %s (Y/N): ", message);
+    scanf(" %c", &choice);
+    int c;
+    while ((c = getchar()) != '\n' && c != EOF);
+    return (choice == 'y' || choice == 'Y');
 }
 
-int confirm(const char *msg) {
-    char c;
-    printf("\n[CONFIRM] %s (Y/N): ", msg);
-    scanf(" %c", &c);
-    while (getchar() != '\n'); 
-    return (toupper(c) == 'Y');
+struct Node* createNode(unsigned char data, uint32_t freq) {
+    struct Node* temp = (struct Node*)malloc(sizeof(struct Node));
+    temp->left = temp->right = NULL;
+    temp->data = data;
+    temp->freq = freq;
+    return temp;
 }
 
-// --- Min Heap logic ---
-Node* createNode(unsigned char d, uint32_t f) {
-    Node* n = (Node*)calloc(1, sizeof(Node));
-    n->data = d; n->freq = f;
-    return n;
+struct MinHeap* createMinHeap(unsigned capacity) {
+    struct MinHeap* minHeap = (struct MinHeap*)malloc(sizeof(struct MinHeap));
+    minHeap->size = 0;
+    minHeap->array = (struct Node**)malloc(capacity * sizeof(struct Node*));
+    return minHeap;
 }
 
-void heapify(MinHeap* h, int i) {
-    int s = i, L = 2 * i + 1, R = 2 * i + 2;
-    if (L < h->size && h->array[L]->freq < h->array[s]->freq) s = L;
-    if (R < h->size && h->array[R]->freq < h->array[s]->freq) s = R;
-    if (s != i) {
-        Node* t = h->array[i]; h->array[i] = h->array[s]; h->array[s] = t;
-        heapify(h, s);
+void swapNode(struct Node** a, struct Node** b) {
+    struct Node* t = *a;
+    *a = *b;
+    *b = t;
+}
+
+void minHeapify(struct MinHeap* minHeap, int idx) {
+    int smallest = idx;
+    int left = 2 * idx + 1;
+    int right = 2 * idx + 2;
+
+    if (left < minHeap->size && minHeap->array[left]->freq < minHeap->array[smallest]->freq)
+        smallest = left;
+
+    if (right < minHeap->size && minHeap->array[right]->freq < minHeap->array[smallest]->freq)
+        smallest = right;
+
+    if (smallest != idx) {
+        swapNode(&minHeap->array[smallest], &minHeap->array[idx]);
+        minHeapify(minHeap, smallest);
     }
 }
 
-Node* extract(MinHeap* h) {
-    Node* t = h->array[0];
-    h->array[0] = h->array[--h->size];
-    heapify(h, 0);
-    return t;
+struct Node* extractMin(struct MinHeap* minHeap) {
+    struct Node* temp = minHeap->array[0];
+    minHeap->array[0] = minHeap->array[minHeap->size - 1];
+    --minHeap->size;
+    minHeapify(minHeap, 0);
+    return temp;
 }
 
-void insert(MinHeap* h, Node* n) {
-    int i = h->size++;
-    while (i && n->freq < h->array[(i - 1) / 2]->freq) {
-        h->array[i] = h->array[(i - 1) / 2];
+void insertMinHeap(struct MinHeap* minHeap, struct Node* node) {
+    ++minHeap->size;
+    int i = minHeap->size - 1;
+    while (i && node->freq < minHeap->array[(i - 1) / 2]->freq) {
+        minHeap->array[i] = minHeap->array[(i - 1) / 2];
         i = (i - 1) / 2;
     }
-    h->array[i] = n;
+    minHeap->array[i] = node;
 }
 
-// --- Huffman Logic ---
-Node* buildTree(uint32_t f[]) {
-    MinHeap h = {0, (Node**)malloc(MAX_CHAR * sizeof(Node*))};
-    for (int i = 0; i < MAX_CHAR; i++)
-        if (f[i]) insert(&h, createNode(i, f[i]));
+void buildMinHeap(struct MinHeap* minHeap) {
+    int n = minHeap->size - 1;
+    for (int i = (n - 1) / 2; i >= 0; --i)
+        minHeapify(minHeap, i);
+}
 
-    while (h.size > 1) {
-        Node *L = extract(&h), *R = extract(&h);
-        Node *p = createNode('$', L->freq + R->freq);
-        p->left = L; p->right = R;
-        insert(&h, p);
+int isLeaf(struct Node* root) {
+    return !(root->left) && !(root->right);
+}
+
+struct Node* buildHuffmanTree(unsigned char data[], uint32_t freq[], int size) {
+    struct Node *left, *right, *top;
+    struct MinHeap* minHeap = createMinHeap(size);
+    for (int i = 0; i < size; ++i)
+        minHeap->array[i] = createNode(data[i], freq[i]);
+    minHeap->size = size;
+    buildMinHeap(minHeap);
+
+    while (minHeap->size != 1) {
+        left = extractMin(minHeap);
+        right = extractMin(minHeap);
+
+        top = createNode('$', left->freq + right->freq);
+        top->left = left;
+        top->right = right;
+
+        insertMinHeap(minHeap, top);
     }
-    Node* root = extract(&h);
-    free(h.array);
+    struct Node* root = extractMin(minHeap);
+    free(minHeap->array);
+    free(minHeap);
     return root;
 }
 
-void gen(Node* r, int a[], int t) {
-    if (r->left) { a[t] = 0; gen(r->left, a, t + 1); a[t] = 1; gen(r->right, a, t + 1); }
-    else {
-        codes[r->data] = (char*)malloc(t + 1);
-        for (int i = 0; i < t; i++) codes[r->data][i] = a[i] + '0';
-        codes[r->data][t] = '\0';
+void freeTree(struct Node* root) {
+    if (!root) return;
+    freeTree(root->left);
+    freeTree(root->right);
+    free(root);
+}
+
+char* huffmanCodes[MAX_CHAR];
+
+void printFrequencies(unsigned char chars[], uint32_t freqs[], int size) {
+    printf("\n=== CHARACTER FREQUENCIES ===\n");
+    for (int i = 0; i < size; i++) {
+        if (chars[i] == '\n')
+            printf("'\\n': %u\n", freqs[i]);
+        else if (chars[i] == '\t')
+            printf("'\\t': %u\n", freqs[i]);
+        else if (chars[i] == ' ')
+            printf("'(space)': %u\n", freqs[i]);
+        else
+            printf("'%c': %u\n", chars[i], freqs[i]);
+    }
+    printf("=============================\n\n");
+}
+
+void printHuffmanCodes() {
+    printf("\n=== GENERATED HUFFMAN CODES ===\n");
+    int count = 0;
+    for (int i = 0; i < MAX_CHAR; i++) {
+        if (huffmanCodes[i] != NULL) {
+            if (i == '\n')
+                printf("'\\n': %s\n", huffmanCodes[i]);
+            else if (i == '\t')
+                printf("'\\t': %s\n", huffmanCodes[i]);
+            else if (i == '\r')
+                printf("'\\r': %s\n", huffmanCodes[i]);
+            else if (i == ' ')
+                printf("'(space)': %s\n", huffmanCodes[i]);
+            else if (i >= 32 && i < 127)
+                printf("'%c': %s\n", (char)i, huffmanCodes[i]);
+            else
+                printf("[ASCII %d]: %s\n", i, huffmanCodes[i]);
+            count++;
+        }
+    }
+    printf("Total unique characters: %d\n", count);
+    printf("================================\n\n");
+}
+
+void generateCodes(struct Node* root, int arr[], int top) {
+    if (root->left) {
+        arr[top] = 0;
+        generateCodes(root->left, arr, top + 1);
+    }
+    if (root->right) {
+        arr[top] = 1;
+        generateCodes(root->right, arr, top + 1);
+    }
+    if (isLeaf(root)) {
+        huffmanCodes[root->data] = (char*)malloc(top + 1);
+        for (int i = 0; i < top; i++) {
+            huffmanCodes[root->data][i] = arr[i] + '0';
+        }
+        huffmanCodes[root->data][top] = '\0';
     }
 }
 
-void freeTree(Node* r) { if (r) { freeTree(r->left); freeTree(r->right); free(r); } }
+unsigned char bitBuffer[8];
+int bitIndex = 0;
 
-// --- File Handling ---
-void compress(const char* inP, const char* outP) {
-    if (is_dir(inP)) { printf("Error: Input is a directory.\n"); return; }
-    FILE *in = fopen(inP, "rb");
-    if (!in) { perror("Input error"); return; }
+void writeBit(FILE* out, int bit) {
+    bitBuffer[bitIndex++] = bit ? '1' : '0';
+    if (bitIndex == 8) {
+        unsigned char byte = 0;
+        for (int i = 0; i < 8; i++) {
+            byte = (byte << 1) | (bitBuffer[i] - '0');
+        }
+        fputc(byte, out);
+        bitIndex = 0;
+    }
+}
 
-    uint32_t f[MAX_CHAR] = {0}, total = 0;
-    int c; while ((c = fgetc(in)) != EOF) { f[(unsigned char)c]++; total++; }
-    if (total == 0) { printf("File is empty.\n"); fclose(in); return; }
+void flushBits(FILE* out) {
+    if (bitIndex > 0) {
+        unsigned char byte = 0;
+        for (int i = 0; i < bitIndex; i++) {
+            byte = (byte << 1) | (bitBuffer[i] - '0');
+        }
+        byte <<= (8 - bitIndex);
+        fputc(byte, out);
+        bitIndex = 0;
+    }
+}
 
-    Node* root = buildTree(f);
-    int bitA[MAX_CHAR];
-    for (int i = 0; i < MAX_CHAR; i++) codes[i] = NULL;
-    gen(root, bitA, 0);
+int readBit(FILE* in, int *bitPos, unsigned char *currentByte) {
+    if (*bitPos == 8) {
+        int c = fgetc(in);
+        if (c == EOF) return -1;
+        *currentByte = (unsigned char)c;
+        *bitPos = 0;
+    }
+    int bit = (*currentByte >> (7 - *bitPos)) & 1;
+    (*bitPos)++;
+    return bit;
+}
 
-    FILE *out = fopen(outP, "wb");
-    if (!out) { perror("Output error"); fclose(in); freeTree(root); return; }
+void compressFile(const char* inputPath, const char* outputPath) {
+    FILE* in = fopen(inputPath, "rb");
+    if (!in) { perror("Error opening input file"); return; }
 
-    fwrite("DHJ1", 1, 4, out); // Magic Number
-    fwrite(&total, 4, 1, out);
-    uint16_t u = 0; for (int i = 0; i < MAX_CHAR; i++) if (f[i]) u++;
-    fwrite(&u, 2, 1, out);
-    for (int i = 0; i < MAX_CHAR; i++) if (f[i]) {
-        unsigned char ch = i; fwrite(&ch, 1, 1, out); fwrite(&f[i], 4, 1, out);
+    uint32_t freq[MAX_CHAR] = {0};
+    int c;
+    uint32_t totalChars = 0;
+    while ((c = fgetc(in)) != EOF) {
+        freq[(unsigned char)c]++;
+        totalChars++;
+    }
+
+    if (totalChars == 0) {
+        printf("File is empty.\n");
+        fclose(in);
+        return;
+    }
+
+    unsigned char uniqueChars[MAX_CHAR];
+    uint32_t uniqueFreqs[MAX_CHAR];
+    int size = 0;
+    for (int i = 0; i < MAX_CHAR; i++) {
+        if (freq[i] > 0) {
+            uniqueChars[size] = (unsigned char)i;
+            uniqueFreqs[size] = freq[i];
+            size++;
+        }
+    }
+
+    printFrequencies(uniqueChars, uniqueFreqs, size);
+
+    struct Node* root = buildHuffmanTree(uniqueChars, uniqueFreqs, size);
+    int arr[256], top = 0;
+    
+    for (int i = 0; i < MAX_CHAR; i++) huffmanCodes[i] = NULL;
+    
+    generateCodes(root, arr, top);
+    printHuffmanCodes();
+
+    FILE* out = fopen(outputPath, "wb");
+    if (!out) { perror("Error opening output file"); fclose(in); return; }
+
+    fwrite(&totalChars, sizeof(uint32_t), 1, out);
+
+    uint16_t uniqueCount = (uint16_t)size;
+    fwrite(&uniqueCount, sizeof(uint16_t), 1, out);
+    for (int i = 0; i < MAX_CHAR; i++) {
+        if (freq[i] > 0) {
+            unsigned char ch = (unsigned char)i;
+            fwrite(&ch, 1, 1, out);
+            fwrite(&freq[i], sizeof(uint32_t), 1, out);
+        }
     }
 
     rewind(in);
-    uint8_t buf = 0; int b = 0;
+    bitIndex = 0;
     while ((c = fgetc(in)) != EOF) {
-        char *s = codes[(unsigned char)c];
-        for (int i = 0; s[i]; i++) {
-            if (s[i] == '1') buf |= (1 << (7 - b));
-            if (++b == 8) { fputc(buf, out); buf = 0; b = 0; }
+        char* code = huffmanCodes[(unsigned char)c];
+        for (int i = 0; code[i] != '\0'; i++) {
+            writeBit(out, code[i] - '0');
         }
     }
-    if (b > 0) fputc(buf, out);
+    flushBits(out);
 
-    long inS = ftell(in); fseek(out, 0, SEEK_END); long outS = ftell(out);
-    printf("\n=== STATISTICS ===\nOriginal: %ld bytes\nCompressed: %ld bytes\nRatio: %.2f%%\n", 
-           inS, outS, ((double)outS/inS)*100);
+    long inSize = ftell(in);
+    fseek(out, 0, SEEK_END);
+    long outSize = ftell(out);
 
-    fclose(in); fclose(out); freeTree(root);
-    for (int i = 0; i < MAX_CHAR; i++) if (codes[i]) free(codes[i]);
+    printf("\n=== COMPRESSION COMPLETE ===\n");
+    printf("Original Size:   %ld bytes\n", inSize);
+    printf("Compressed Size: %ld bytes\n", outSize);
+    printf("Compression Ratio: %.2f%%\n", ((double)outSize / inSize) * 100);
+    printf("Space Saved:      %.2f%%\n", (1.0 - (double)outSize / inSize) * 100);
+    printf("=============================\n");
 
-    if (outS > inS) {
-        printf("[WARNING] Output is larger than input.");
-        if (!confirm("Keep the compressed file anyway?")) {
-            remove(outP); printf("File deleted.\n");
+    fclose(in);
+    fclose(out);
+
+    if (outSize > inSize) {
+        printf("\n[WARNING] Compressed version is larger than original due to header overhead.");
+        if (!confirmAction("Keep this inefficient file anyway?")) {
+            if (remove(outputPath) == 0) {
+                printf("[DELETED] Inefficient compressed file removed.\n");
+            } else {
+                perror("[ERROR] Could not remove file");
+            }
+        } else {
+            printf("[KEPT] Efficiency warning acknowledged.\n");
         }
     }
+    
+    for (int i = 0; i < MAX_CHAR; i++) 
+        if (huffmanCodes[i]) 
+            free(huffmanCodes[i]);
+    
+    freeTree(root);
 }
 
-void decompress(const char* inP, const char* outP) {
-    FILE *in = fopen(inP, "rb");
-    if (!in) { perror("Input error"); return; }
-    char sig[4]; if (fread(sig, 1, 4, in) != 4 || memcmp(sig, "DHJ1", 4) != 0) {
-        printf("Error: Not a valid Huffman file.\n"); fclose(in); return;
+void decompressFile(const char* inputPath, const char* outputPath) {
+    FILE* in = fopen(inputPath, "rb");
+    if (!in) { perror("Error opening compressed file"); return; }
+
+    uint32_t totalChars;
+    if (fread(&totalChars, sizeof(uint32_t), 1, in) != 1) {
+        printf("Error reading header (total chars).\n");
+        fclose(in);
+        return;
     }
 
-    uint32_t total; uint16_t unique;
-    fread(&total, 4, 1, in); fread(&unique, 2, 1, in);
-    uint32_t f[MAX_CHAR] = {0};
-    for (int i = 0; i < unique; i++) {
-        unsigned char ch; fread(&ch, 1, 1, in); fread(&f[ch], 4, 1, in);
+    uint16_t uniqueCount;
+    if (fread(&uniqueCount, sizeof(uint16_t), 1, in) != 1) {
+        printf("Error reading header (unique count).\n");
+        fclose(in);
+        return;
     }
 
-    Node* root = buildTree(f), *curr = root;
-    FILE *out = fopen(outP, "wb");
-    uint32_t count = 0; uint8_t buf; int b = 8;
-    while (count < total) {
-        if (b == 8) { buf = fgetc(in); b = 0; }
-        curr = (buf & (1 << (7 - b++))) ? curr->right : curr->left;
-        if (!curr->left && !curr->right) { fputc(curr->data, out); count++; curr = root; }
+    unsigned char uniqueChars[MAX_CHAR];
+    uint32_t uniqueFreqs[MAX_CHAR];
+    for (int i = 0; i < uniqueCount; i++) {
+        fread(&uniqueChars[i], 1, 1, in);
+        fread(&uniqueFreqs[i], sizeof(uint32_t), 1, in);
     }
-    printf("Decompression successful. Restored %u bytes.\n", count);
-    fclose(in); fclose(out); freeTree(root);
+
+    struct Node* root = buildHuffmanTree(uniqueChars, uniqueFreqs, uniqueCount);
+
+    FILE* out = fopen(outputPath, "wb");
+    if (!out) { perror("Error opening output file"); fclose(in); return; }
+
+    struct Node* curr = root;
+    uint32_t decodedCount = 0;
+    int bitPos = 8;
+    unsigned char currentByte = 0;
+
+    while (decodedCount < totalChars) {
+        int bit = readBit(in, &bitPos, &currentByte);
+        if (bit == -1) break;
+
+        if (bit == 0) curr = curr->left;
+        else curr = curr->right;
+
+        if (isLeaf(curr)) {
+            fputc(curr->data, out);
+            decodedCount++;
+            curr = root;
+        }
+    }
+
+    printf("=== DECOMPRESSION COMPLETE ===\n");
+    printf("Decoded %u characters.\n", decodedCount);
+    printf("Expected: %u characters.\n", totalChars);
+    if (decodedCount != totalChars)
+        printf("WARNING - Character count mismatch!\n");
+    printf("===============================\n\n");
+
+    fclose(in);
+    fclose(out);
+    
+    freeTree(root);
 }
 
-// --- Main ---
+void clearInputBuffer() {
+    int c;
+    while ((c = getchar()) != '\n' && c != EOF);
+}
+
 int main(int argc, char *argv[]) {
     if (argc >= 2) {
-        char inP[512], outP[512]; strcpy(inP, argv[1]); trim(inP);
-        FILE *peek = fopen(inP, "rb"); int isC = 0;
-        if (peek) { char s[4]; if (fread(s, 1, 4, peek) == 4 && !memcmp(s, "DHJ1", 4)) isC = 1; fclose(peek); }
+        char inputPath[512];
+        strcpy(inputPath, argv[1]);
+        trimQuotes(inputPath);
+        
+        char outputPath[512];
+        char *lastDot = strrchr(inputPath, '.');
+        
+        int isHuf = (lastDot && (strcmp(lastDot, ".huf") == 0 || strcmp(lastDot, ".HUF") == 0));
 
-        if (isC) { 
-            strcpy(outP, inP); char *p = strrchr(outP, '.'); if (p) *p = '\0';
-            strcat(outP, "_restored.png"); decompress(inP, outP); 
-        } else { sprintf(outP, "%s.huf", inP); compress(inP, outP); }
+        if (isHuf) {
+            sprintf(outputPath, "%s_restored", inputPath);
+            
+            printf("\n[ACTION] Decompressing: %s\n", inputPath);
+            decompressFile(inputPath, outputPath);
+        } else {
+            sprintf(outputPath, "%s.huf", inputPath);
+            
+            printf("\n[ACTION] Compressing: %s\n", inputPath);
+            compressFile(inputPath, outputPath);
+        }
+        
+        printf("Process completed successfully.\n");
         return 0;
     }
 
-    char mode, inP[512], outP[512];
+    char mode;
+    char inputPath[512];
+    char outputPath[512];
+    char continueChoice;
+
     do {
         printf("\033[2J\033[H");
-        printf("ΓòöΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòù\n");
-        printf("Γòæ   HUFFMAN ENCODER (BALANCED VERSION)   Γòæ\n");
-        printf("ΓòÜΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓò¥\n\n");
-        printf("Select Mode:\n  [C] Compress\n  [D] Decompress\n  [Q] Quit\n\nEnter choice: ");
-        scanf(" %c", &mode); while (getchar() != '\n');
-        mode = toupper(mode);
+        
+        printf("\nHUFFMAN COMPRESSION TOOL\n\n");
 
-        if (mode == 'Q') break;
-        if (mode != 'C' && mode != 'D') continue;
+        printf("Select operation mode:\n");
+        printf("  [C] Compress a file\n");
+        printf("  [D] Decompress a file\n");
+        printf("  [Q] Quit\n\n");
+        printf("Enter your choice: ");
+        scanf(" %c", &mode);
+        clearInputBuffer();
 
-        printf("Input File path: "); fgets(inP, 512, stdin); trim(inP);
-        printf("Output File path: "); fgets(outP, 512, stdin); trim(outP);
+        if (mode >= 'a' && mode <= 'z') {
+            mode = mode - 'a' + 'A';
+        }
 
-        if (strlen(inP) == 0 || strlen(outP) == 0) { printf("Error: Paths cannot be empty.\n"); }
-        else if (mode == 'C') compress(inP, outP);
-        else decompress(inP, outP);
+        if (mode == 'Q') {
+            printf("\nThank you for using Huffman Compression Tool!\n");
+            break;
+        }
 
-        printf("\nPress Enter to continue..."); getchar();
-    } while (1);
+        if (mode != 'C' && mode != 'D') {
+            printf("\nInvalid choice! Please enter C, D, or Q.\n\n");
+            continue;
+        }
 
+        printf("\nEnter input file path: ");
+        if (fgets(inputPath, sizeof(inputPath), stdin) != NULL) {
+            trimQuotes(inputPath);
+        }
+
+        printf("Enter output file path: ");
+        if (fgets(outputPath, sizeof(outputPath), stdin) != NULL) {
+            trimQuotes(outputPath);
+        }
+
+        if (strlen(inputPath) == 0) {
+            printf("\nError: Input file path cannot be empty!\n\n");
+            continue;
+        }
+
+        if (strlen(outputPath) == 0) {
+            printf("\nError: Output file path cannot be empty!\n\n");
+            continue;
+        }
+
+        printf("\n");
+
+        if (mode == 'C') {
+            printf("Compressing file...\n");
+            compressFile(inputPath, outputPath);
+        } else if (mode == 'D') {
+            printf("Decompressing file...\n");
+            decompressFile(inputPath, outputPath);
+        }
+
+        printf("Do you want to perform another operation? (Y/N): ");
+        scanf(" %c", &continueChoice);
+        clearInputBuffer();
+
+        if (continueChoice >= 'a' && continueChoice <= 'z') {
+            continueChoice = continueChoice - 'a' + 'A';
+        }
+
+    } while (continueChoice == 'Y');
+
+    printf("\nGoodbye!\n");
     return 0;
 }
