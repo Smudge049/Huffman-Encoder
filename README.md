@@ -127,7 +127,7 @@ The `.huf` file contains:
    - symbol frequency (`uint32_t`)
 4. Bit-packed Huffman payload
 
-This format is specific to this implementation and expects compatible integer representation between writer and reader (notably endianness and fixed-width integer assumptions). In practice, use the same architecture/OS toolchain family for safest portability.
+This format is specific to this implementation and is effectively **platform-dependent** because raw integers are written/read directly via `fwrite`/`fread`. That means byte order follows the host platform's native endianness (not a fixed on-disk endianness), so cross-platform interchange is safest only between systems with matching endianness and compatible integer representation.
 
 ## Screenshots
 Compression:
@@ -140,7 +140,7 @@ Decompression:
 
 ## Limitations and Notes
 - Output can be larger than input for small/high-entropy files (header overhead). The tool warns and lets you delete or keep the compressed file.
-- Internal path buffers are fixed at 512 bytes (`char inputPath[512]`, `char outputPath[512]`), so default generated names like `<input>.huf` or `<input>_restored` can overflow if the input path is close to that limit.
+- Internal path buffers are fixed at 512 bytes (`char inputPath[512]`, `char outputPath[512]`), and generated names are built with `sprintf`; if paths are too long, this risks undefined behavior from buffer overflow. As a practical guideline, keep input paths comfortably below 500 characters to leave room for suffixes like `.huf` and `_restored`.
 - The project is currently a single-file C implementation (`latest.c`) with no Makefile/CMake script.
 - No automated test suite is included in the repository.
 
